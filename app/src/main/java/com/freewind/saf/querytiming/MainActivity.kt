@@ -33,11 +33,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * SAF + ContentResolver.query 耗时对比 Demo。
+ * SAF + ContentResolver.query 耗时 Demo。
  *
- * 与 DocumentFile.listFiles Demo 同结构四步：
- * query(list documentId) → build uris → query names → query sizes。
- * 结果进数组；界面只报动作、条数、ms。
+ * 每个信息单独 query/遍历计时（对照 DocumentFile Demo）：
+ * 1) query documentId
+ * 2) 内存拼 uri（不访问 FS）
+ * 3) 单独 query display_name
+ * 4) 单独 query size
+ * 末尾各列前 5 条样本。
  */
 class MainActivity : ComponentActivity() {
 
@@ -47,7 +50,7 @@ class MainActivity : ComponentActivity() {
     // 用户选中的目录树 Uri
     private var treeUri by mutableStateOf<Uri?>(null)
 
-    // 耗时日志
+    // 耗时与样本日志
     private var outputText by mutableStateOf("先点「选择目录」，再点「扫描」看耗时。")
 
     private var scanning by mutableStateOf(false)
@@ -87,8 +90,8 @@ class MainActivity : ComponentActivity() {
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "四步：query documentId → fetch uris → query names → query sizes。" +
-                                "结果进数组；只报条数与 ms。",
+                            text = "各信息单独 query 计时：documentId → 内存拼 uri → name → size。" +
+                                "末尾各打前 5 条。",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Button(
@@ -145,18 +148,15 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 四步（均经 ContentResolver / DocumentsContract，不用 DocumentFile）：
-     * 1) query 子文档 COLUMN_DOCUMENT_ID → documentIds 数组（≈ listFiles）
-     * 2) 用 documentId 拼 Uri → uris 数组
-     * 3) 再 query COLUMN_DISPLAY_NAME → names 数组
-     * 4) 再 query COLUMN_SIZE → sizes 数组
+     * 每个信息单独一轮：query 或内存遍历 → 放进数组 → 记时。
+     * 内存可拿：documentId（已在 list 结果里）、uri（buildDocumentUriUsingTree）。
+     * 要再访问 Provider：display_name、size（各单独 query）。
      */
     private suspend fun runTimedQueryScan(treeUri: Uri) {
-        // 子目录查询 Uri：tree + documentId
         val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, treeDocId)
 
-        // —— 1) query list（只要 documentId）——
+        // —— 1) 单独 query：documentId（≈ listFiles）——
         val listStarted = SystemClock.elapsedRealtime()
         val documentIds = withContext(Dispatchers.IO) {
             queryColumnStrings(
@@ -165,21 +165,22 @@ class MainActivity : ComponentActivity() {
             )
         }
         val listMs = SystemClock.elapsedRealtime() - listStarted
-        appendLine("query list (documentId): ${documentIds.size} items, ${listMs} ms")
+        appendLine("query documentId: ${documentIds.size} items, ${listMs} ms")
 
-        // —— 2) fetch all uris（本地拼 Uri，不再 query）——
+        // —— 2) 内存拼 uri（不再访问 FS）——
         val urisStarted = SystemClock.elapsedRealtime()
         val uris = withContext(Dispatchers.IO) {
             ArrayList<Uri>(documentIds.size).also { out ->
                 for (docId in documentIds) {
-                    out.add(DocumentsContract.buildDocumentUriUsingTree(treeUri, docId))
+                    val id = docId ?: error("documentId 为 null，无法拼 Uri")
+                    out.add(DocumentsContract.buildDocumentUriUsingTree(treeUri, id))
                 }
             }
         }
         val urisMs = SystemClock.elapsedRealtime() - urisStarted
-        appendLine("fetch all uris: ${uris.size} items, ${urisMs} ms")
+        appendLine("fetch all uris (memory): ${uris.size} items, ${urisMs} ms")
 
-        // —— 3) query names ——
+        // —— 3) 单独 query：display_name ——
         val namesStarted = SystemClock.elapsedRealtime()
         val names = withContext(Dispatchers.IO) {
             queryColumnStrings(
@@ -188,9 +189,9 @@ class MainActivity : ComponentActivity() {
             )
         }
         val namesMs = SystemClock.elapsedRealtime() - namesStarted
-        appendLine("query all names: ${names.size} items, ${namesMs} ms")
+        appendLine("query display_name: ${names.size} items, ${namesMs} ms")
 
-        // —— 4) query sizes ——
+        // —— 4) 单独 query：size ——
         val sizesStarted = SystemClock.elapsedRealtime()
         val sizes = withContext(Dispatchers.IO) {
             queryColumnLongs(
@@ -199,18 +200,18 @@ class MainActivity : ComponentActivity() {
             )
         }
         val sizesMs = SystemClock.elapsedRealtime() - sizesStarted
-        appendLine("query all sizes: ${sizes.size} items, ${sizesMs} ms")
+        appendLine("query size: ${sizes.size} items, ${sizesMs} ms")
 
-        // 引用数组，防判定无用；不打印细节
-        Log.d(
-            tag,
-            "kept arrays: ids=${documentIds.size}, uris=${uris.size}, names=${names.size}, sizes=${sizes.size}",
-        )
+        // 末尾各列前 5 条样本
+        appendSample("documentId", documentIds.map { it ?: "null" })
+        appendSample("uris", uris.map { it.toString() })
+        appendSample("names", names.map { it ?: "null" })
+        appendSample("sizes", sizes.map { it?.toString() ?: "null" })
     }
 
     /**
-     * 对 childrenUri 做一次 query，把指定字符串列全部读进 ArrayList。
-     * cursor 为 null → 直接报错（禁 silent fallback）。
+     * 对 childrenUri 做一次单列 query，读进 ArrayList。
+     * cursor 为 null → 报错（禁 silent fallback）。
      */
     private fun queryColumnStrings(childrenUri: Uri, column: String): ArrayList<String?> {
         val projection = arrayOf(column)
@@ -226,7 +227,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** 同 queryColumnStrings，读 Long 列（SIZE）。缺省/null → 仍占一条，值为 null。 */
+    /** 单列 query，读 Long（SIZE）；null 仍占一条。 */
     private fun queryColumnLongs(childrenUri: Uri, column: String): ArrayList<Long?> {
         val projection = arrayOf(column)
         val cursor = contentResolver.query(childrenUri, projection, null, null, null)
@@ -238,6 +239,19 @@ class MainActivity : ComponentActivity() {
                     out.add(if (c.isNull(index)) null else c.getLong(index))
                 }
             }
+        }
+    }
+
+    /** 某数组前 5 条样本。 */
+    private fun appendSample(label: String, values: List<String>) {
+        appendLine("--- sample $label (first 5) ---")
+        val n = minOf(5, values.size)
+        if (n == 0) {
+            appendLine("(empty)")
+            return
+        }
+        for (i in 0 until n) {
+            appendLine("[$i] ${values[i]}")
         }
     }
 
