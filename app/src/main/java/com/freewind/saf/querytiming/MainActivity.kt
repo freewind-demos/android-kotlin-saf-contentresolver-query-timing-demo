@@ -209,11 +209,6 @@ class MainActivity : ComponentActivity() {
         appendSample("sizes", sizes.map { it?.toString() ?: "null" })
         appendLine("")
 
-        // 分列合计（便于和合并 query 对比）
-        val separateQuerySumMs = listMs + namesMs + sizesMs
-        appendLine("sum of separate queries (id+name+size): ${separateQuerySumMs} ms")
-        appendLine("")
-
         // —— 4) 合并一次 query：documentId + display_name + size ——
         appendLine("开始 query combined (id+name+size) …")
         val combinedStarted = SystemClock.elapsedRealtime()

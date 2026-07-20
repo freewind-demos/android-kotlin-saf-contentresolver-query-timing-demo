@@ -29,7 +29,7 @@
 ## 注意事项
 
 - 三步分列：`query documentId` → `query display_name` → `query size`。
-- 第四步：一次投影 `documentId + display_name + size` 合并 query，并打印 `sum of separate queries` 便于对比。
+- 第四步：一次投影 `documentId + display_name + size` 合并 query。
 - 每步：开始前先 append「开始 …」→ 耗时 → 立刻打前 5 条；块间空一行。
 - Logcat tag：`SafQueryTiming`。
 - 对照：`android-kotlin-saf-documentfile-listfiles-demo`。
