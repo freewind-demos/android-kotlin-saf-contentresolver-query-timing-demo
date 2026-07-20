@@ -2,7 +2,7 @@
 
 ## 简介
 
-用 `ContentResolver.query` + `DocumentsContract` 做与 DocumentFile Demo 对照的耗时测试：每个信息单独 query/遍历并计时；末尾各打前 5 条样本。
+用 `ContentResolver.query` + `DocumentsContract` 做与 DocumentFile Demo 对照的耗时测试：每个信息单独 query/遍历并计时；每步查完立刻打前 5 条样本。
 
 ## 快速开始
 
@@ -24,7 +24,7 @@
 
 - 四步分列：`query documentId` → `fetch uris (memory)` → `query display_name` → `query size`。
 - 第五步：一次投影 `documentId + display_name + size` 合并 query，并打印 `sum of separate queries` 便于对比。
-- 末尾样本：分列与 combined 各前 5 条。
+- 每步样本：分列与 combined 查完立刻各打前 5 条。
 - Logcat tag：`SafQueryTiming`。
 - 对照：`android-kotlin-saf-documentfile-listfiles-demo`。
 

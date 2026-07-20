@@ -36,11 +36,11 @@ import kotlinx.coroutines.withContext
  * SAF + ContentResolver.query 耗时 Demo。
  *
  * 每个信息单独 query/遍历计时（对照 DocumentFile Demo）：
- * 1) query documentId
- * 2) 内存拼 uri（不访问 FS）
- * 3) 单独 query display_name
- * 4) 单独 query size
- * 末尾各列前 5 条样本。
+ * 1) query documentId → 紧接前 5 条
+ * 2) 内存拼 uri（不访问 FS）→ 紧接前 5 条
+ * 3) 单独 query display_name → 紧接前 5 条
+ * 4) 单独 query size → 紧接前 5 条
+ * 5) 合并 query → 紧接前 5 条
  */
 class MainActivity : ComponentActivity() {
 
@@ -90,8 +90,8 @@ class MainActivity : ComponentActivity() {
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "分列单独 query 计时，最后再一次把 documentId+name+size 合并 query 对比。" +
-                                "末尾各打前 5 条。",
+                            text = "分列单独 query 计时，每步查完立刻打前 5 条；" +
+                                "再一次把 documentId+name+size 合并 query 对比。",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Button(
@@ -165,6 +165,7 @@ class MainActivity : ComponentActivity() {
         }
         val listMs = SystemClock.elapsedRealtime() - listStarted
         appendLine("query documentId: ${documentIds.size} items, ${listMs} ms")
+        appendSample("documentId", documentIds.map { it ?: "null" })
 
         // —— 2) 内存拼 uri ——
         val urisStarted = SystemClock.elapsedRealtime()
@@ -178,6 +179,7 @@ class MainActivity : ComponentActivity() {
         }
         val urisMs = SystemClock.elapsedRealtime() - urisStarted
         appendLine("fetch all uris (memory): ${uris.size} items, ${urisMs} ms")
+        appendSample("uris", uris.map { it.toString() })
 
         // —— 3) 单独 query：display_name ——
         val namesStarted = SystemClock.elapsedRealtime()
@@ -189,6 +191,7 @@ class MainActivity : ComponentActivity() {
         }
         val namesMs = SystemClock.elapsedRealtime() - namesStarted
         appendLine("query display_name: ${names.size} items, ${namesMs} ms")
+        appendSample("names", names.map { it ?: "null" })
 
         // —— 4) 单独 query：size ——
         val sizesStarted = SystemClock.elapsedRealtime()
@@ -200,6 +203,7 @@ class MainActivity : ComponentActivity() {
         }
         val sizesMs = SystemClock.elapsedRealtime() - sizesStarted
         appendLine("query size: ${sizes.size} items, ${sizesMs} ms")
+        appendSample("sizes", sizes.map { it?.toString() ?: "null" })
 
         // 分列合计（便于和合并 query 对比；不含内存拼 uri）
         val separateQuerySumMs = listMs + namesMs + sizesMs
@@ -214,12 +218,6 @@ class MainActivity : ComponentActivity() {
         appendLine(
             "query combined (id+name+size): ${combined.ids.size} items, ${combinedMs} ms",
         )
-
-        // 样本：分列结果 + 合并结果
-        appendSample("documentId", documentIds.map { it ?: "null" })
-        appendSample("uris", uris.map { it.toString() })
-        appendSample("names", names.map { it ?: "null" })
-        appendSample("sizes", sizes.map { it?.toString() ?: "null" })
         appendSample("combined.documentId", combined.ids.map { it ?: "null" })
         appendSample("combined.names", combined.names.map { it ?: "null" })
         appendSample("combined.sizes", combined.sizes.map { it?.toString() ?: "null" })
