@@ -24,7 +24,7 @@
 
 - 四步分列：`query documentId` → `fetch uris (memory)` → `query display_name` → `query size`。
 - 第五步：一次投影 `documentId + display_name + size` 合并 query，并打印 `sum of separate queries` 便于对比。
-- 每步样本：分列与 combined 查完立刻各打前 5 条。
+- 每步：开始前先 append「开始 …」→ 耗时 → 立刻打前 5 条；块间空一行。
 - Logcat tag：`SafQueryTiming`。
 - 对照：`android-kotlin-saf-documentfile-listfiles-demo`。
 
