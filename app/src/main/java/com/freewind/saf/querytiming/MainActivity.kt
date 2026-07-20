@@ -35,13 +35,15 @@ import kotlinx.coroutines.withContext
 /**
  * SAF + ContentResolver.query 耗时 Demo。
  *
- * 每个信息单独 query/遍历计时（对照 DocumentFile Demo）：
+ * 对照 DocumentFile：这里没有「list 完后子项已在内存」的对象；
+ * documentId / display_name / size 等都要靠 query 投影拿，没有可纯内存直读的列。
+ * Uri 只能用 treeUri + documentId 拼出来，不是 query 列，也不测。
+ *
  * 各大操作开始前先 append「开始 …」，块间空一行；
  * 1) query documentId → 紧接前 5 条
- * 2) 内存拼 uri（不访问 FS）→ 紧接前 5 条
- * 3) 单独 query display_name → 紧接前 5 条
- * 4) 单独 query size → 紧接前 5 条
- * 5) 合并 query → 紧接前 5 条
+ * 2) query display_name → 紧接前 5 条
+ * 3) query size → 紧接前 5 条
+ * 4) 合并 query → 紧接前 5 条
  */
 class MainActivity : ComponentActivity() {
 
@@ -93,6 +95,15 @@ class MainActivity : ComponentActivity() {
                         Text(
                             text = "分列单独 query 计时，每步查完立刻打前 5 条；" +
                                 "再一次把 documentId+name+size 合并 query 对比。",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        // 与 DocumentFile Demo 对照：query 路径没有纯内存字段
+                        Text(
+                            text = "ContentResolver.query 字段来源：\n" +
+                                "• 纯内存可读：无（不像 DocumentFile.listFiles 子项自带 uri）\n" +
+                                "• 必须 query 投影：documentId、display_name、size、mime_type、" +
+                                "last_modified 等 DocumentsContract.Document 列\n" +
+                                "• Uri：只能用 treeUri+documentId 拼，不是 query 列，本 demo 不测",
                             style = MaterialTheme.typography.bodySmall,
                         )
                         Button(
@@ -149,8 +160,8 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 1~4) 分列：单独 query documentId / 内存拼 uri / query name / query size。
-     * 5) 再一次：同一轮投影带上 documentId + display_name + size，对比合并 query 耗时。
+     * 1~3) 分列：单独 query documentId / display_name / size。
+     * 4) 再一次：同一轮投影带上 documentId + display_name + size，对比合并 query 耗时。
      */
     private suspend fun runTimedQueryScan(treeUri: Uri) {
         val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
@@ -170,23 +181,7 @@ class MainActivity : ComponentActivity() {
         appendSample("documentId", documentIds.map { it ?: "null" })
         appendLine("")
 
-        // —— 2) 内存拼 uri ——
-        appendLine("开始 fetch all uris (memory) …")
-        val urisStarted = SystemClock.elapsedRealtime()
-        val uris = withContext(Dispatchers.IO) {
-            ArrayList<Uri>(documentIds.size).also { out ->
-                for (docId in documentIds) {
-                    val id = docId ?: error("documentId 为 null，无法拼 Uri")
-                    out.add(DocumentsContract.buildDocumentUriUsingTree(treeUri, id))
-                }
-            }
-        }
-        val urisMs = SystemClock.elapsedRealtime() - urisStarted
-        appendLine("fetch all uris (memory): ${uris.size} items, ${urisMs} ms")
-        appendSample("uris", uris.map { it.toString() })
-        appendLine("")
-
-        // —— 3) 单独 query：display_name ——
+        // —— 2) 单独 query：display_name ——
         appendLine("开始 query display_name …")
         val namesStarted = SystemClock.elapsedRealtime()
         val names = withContext(Dispatchers.IO) {
@@ -200,7 +195,7 @@ class MainActivity : ComponentActivity() {
         appendSample("names", names.map { it ?: "null" })
         appendLine("")
 
-        // —— 4) 单独 query：size ——
+        // —— 3) 单独 query：size ——
         appendLine("开始 query size …")
         val sizesStarted = SystemClock.elapsedRealtime()
         val sizes = withContext(Dispatchers.IO) {
@@ -214,12 +209,12 @@ class MainActivity : ComponentActivity() {
         appendSample("sizes", sizes.map { it?.toString() ?: "null" })
         appendLine("")
 
-        // 分列合计（便于和合并 query 对比；不含内存拼 uri）
+        // 分列合计（便于和合并 query 对比）
         val separateQuerySumMs = listMs + namesMs + sizesMs
         appendLine("sum of separate queries (id+name+size): ${separateQuerySumMs} ms")
         appendLine("")
 
-        // —— 5) 合并一次 query：documentId + display_name + size ——
+        // —— 4) 合并一次 query：documentId + display_name + size ——
         appendLine("开始 query combined (id+name+size) …")
         val combinedStarted = SystemClock.elapsedRealtime()
         val combined = withContext(Dispatchers.IO) {
