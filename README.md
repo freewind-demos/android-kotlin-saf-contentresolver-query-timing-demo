@@ -22,9 +22,9 @@
 
 ## 注意事项
 
-- 四步：`query documentId` → `fetch uris (memory)` → `query display_name` → `query size`（name/size 各单独一轮 query，不合并投影）。
-- 内存可拿：已查出的 `documentId`、以及 `buildDocumentUriUsingTree` 拼出的 Uri。
-- 末尾样本：`documentId` / `uris` / `names` / `sizes` 各前 5 条。
+- 四步分列：`query documentId` → `fetch uris (memory)` → `query display_name` → `query size`。
+- 第五步：一次投影 `documentId + display_name + size` 合并 query，并打印 `sum of separate queries` 便于对比。
+- 末尾样本：分列与 combined 各前 5 条。
 - Logcat tag：`SafQueryTiming`。
 - 对照：`android-kotlin-saf-documentfile-listfiles-demo`。
 

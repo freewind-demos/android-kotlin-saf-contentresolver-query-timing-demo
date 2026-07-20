@@ -90,7 +90,7 @@ class MainActivity : ComponentActivity() {
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
-                            text = "各信息单独 query 计时：documentId → 内存拼 uri → name → size。" +
+                            text = "分列单独 query 计时，最后再一次把 documentId+name+size 合并 query 对比。" +
                                 "末尾各打前 5 条。",
                             style = MaterialTheme.typography.bodySmall,
                         )
@@ -148,15 +148,14 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * 每个信息单独一轮：query 或内存遍历 → 放进数组 → 记时。
-     * 内存可拿：documentId（已在 list 结果里）、uri（buildDocumentUriUsingTree）。
-     * 要再访问 Provider：display_name、size（各单独 query）。
+     * 1~4) 分列：单独 query documentId / 内存拼 uri / query name / query size。
+     * 5) 再一次：同一轮投影带上 documentId + display_name + size，对比合并 query 耗时。
      */
     private suspend fun runTimedQueryScan(treeUri: Uri) {
         val treeDocId = DocumentsContract.getTreeDocumentId(treeUri)
         val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, treeDocId)
 
-        // —— 1) 单独 query：documentId（≈ listFiles）——
+        // —— 1) 单独 query：documentId ——
         val listStarted = SystemClock.elapsedRealtime()
         val documentIds = withContext(Dispatchers.IO) {
             queryColumnStrings(
@@ -167,7 +166,7 @@ class MainActivity : ComponentActivity() {
         val listMs = SystemClock.elapsedRealtime() - listStarted
         appendLine("query documentId: ${documentIds.size} items, ${listMs} ms")
 
-        // —— 2) 内存拼 uri（不再访问 FS）——
+        // —— 2) 内存拼 uri ——
         val urisStarted = SystemClock.elapsedRealtime()
         val uris = withContext(Dispatchers.IO) {
             ArrayList<Uri>(documentIds.size).also { out ->
@@ -202,12 +201,60 @@ class MainActivity : ComponentActivity() {
         val sizesMs = SystemClock.elapsedRealtime() - sizesStarted
         appendLine("query size: ${sizes.size} items, ${sizesMs} ms")
 
-        // 末尾各列前 5 条样本
+        // 分列合计（便于和合并 query 对比；不含内存拼 uri）
+        val separateQuerySumMs = listMs + namesMs + sizesMs
+        appendLine("sum of separate queries (id+name+size): ${separateQuerySumMs} ms")
+
+        // —— 5) 合并一次 query：documentId + display_name + size ——
+        val combinedStarted = SystemClock.elapsedRealtime()
+        val combined = withContext(Dispatchers.IO) {
+            queryCombinedIdNameSize(childrenUri)
+        }
+        val combinedMs = SystemClock.elapsedRealtime() - combinedStarted
+        appendLine(
+            "query combined (id+name+size): ${combined.ids.size} items, ${combinedMs} ms",
+        )
+
+        // 样本：分列结果 + 合并结果
         appendSample("documentId", documentIds.map { it ?: "null" })
         appendSample("uris", uris.map { it.toString() })
         appendSample("names", names.map { it ?: "null" })
         appendSample("sizes", sizes.map { it?.toString() ?: "null" })
+        appendSample("combined.documentId", combined.ids.map { it ?: "null" })
+        appendSample("combined.names", combined.names.map { it ?: "null" })
+        appendSample("combined.sizes", combined.sizes.map { it?.toString() ?: "null" })
     }
+
+    /** 一次 query 同时投影 documentId / display_name / size，读进三组数组。 */
+    private fun queryCombinedIdNameSize(childrenUri: Uri): CombinedRows {
+        val idCol = DocumentsContract.Document.COLUMN_DOCUMENT_ID
+        val nameCol = DocumentsContract.Document.COLUMN_DISPLAY_NAME
+        val sizeCol = DocumentsContract.Document.COLUMN_SIZE
+        val projection = arrayOf(idCol, nameCol, sizeCol)
+        val cursor = contentResolver.query(childrenUri, projection, null, null, null)
+            ?: error("contentResolver.query 返回 null, uri=$childrenUri, combined projection")
+        return cursor.use { c ->
+            val idIndex = c.getColumnIndexOrThrow(idCol)
+            val nameIndex = c.getColumnIndexOrThrow(nameCol)
+            val sizeIndex = c.getColumnIndexOrThrow(sizeCol)
+            val ids = ArrayList<String?>(c.count)
+            val names = ArrayList<String?>(c.count)
+            val sizes = ArrayList<Long?>(c.count)
+            while (c.moveToNext()) {
+                ids.add(if (c.isNull(idIndex)) null else c.getString(idIndex))
+                names.add(if (c.isNull(nameIndex)) null else c.getString(nameIndex))
+                sizes.add(if (c.isNull(sizeIndex)) null else c.getLong(sizeIndex))
+            }
+            CombinedRows(ids = ids, names = names, sizes = sizes)
+        }
+    }
+
+    /** 合并 query 读出的三列。 */
+    private data class CombinedRows(
+        val ids: ArrayList<String?>,
+        val names: ArrayList<String?>,
+        val sizes: ArrayList<Long?>,
+    )
 
     /**
      * 对 childrenUri 做一次单列 query，读进 ArrayList。
